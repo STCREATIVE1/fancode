@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FanCode Player | Live Streaming</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="referrer" content="no-referrer" />
+    <link rel="icon" href="https://fancode.com/favicon.ico" type="image/x-icon">
+    <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root { --plyr-color-main:#0ea5e9; }
+        body {
+            margin:0;
+            background:#000;
+            color:#fff;
+            font-family:'Inter',sans-serif;
+            overflow:hidden;
+        }
+        header,footer {
+            background:rgba(15,23,42,0.92);
+            backdrop-filter:blur(20px);
+            padding:15px;
+            border-bottom:1px solid rgba(255,255,255,0.1);
+        }
+        footer { border-top:1px solid rgba(255,255,255,0.1); border-bottom:none; }
+        .player-main { height:calc(100vh - 160px); display:flex; align-items:center; justify-content:center; }
+        #player { width:100%; height:100%; background:#000; }
+        .loading-overlay {
+            position:absolute; inset:0;
+            display:flex; align-items:center; justify-content:center;
+            background:rgba(0,0,0,0.8);
+            z-index:20;
+        }
+        .spinner {
+            width:50px; height:50px; border:4px solid rgba(14,165,233,0.2);
+            border-top-color:#0ea5e9; border-radius:50%;
+            animation:spin 1s linear infinite;
+        }
+        @keyframes spin { to{ transform:rotate(360deg);} }
+        .control-btn {
+            padding:7px 15px; border-radius:6px;
+            background:rgba(30,41,59,0.75);
+            border:1px solid rgba(255,255,255,0.15);
+            cursor:pointer;
+            transition:.3s;
+        }
+        .control-btn:hover { background:#0ea5e9; color:#000; }
+        .language-badge {
+            background:rgba(168,85,247,0.3);
+            border:1px solid rgba(168,85,247,0.4);
+            padding:4px 10px;
+            border-radius:20px;
+            font-size:12px;
+            display:inline-flex;
+            align-items:center;
+            gap:5px;
+        }
+    </style>
+</head>
+
+<body>
+
+<header>
+    <div class="flex justify-between items-center">
+        <a href="index.html" class="control-btn"><i class="fas fa-arrow-left"></i> Back</a>
+
+        <div class="flex gap-2">
+            <button id="theater-btn" class="control-btn"><i class="fas fa-expand"></i></button>
+            <button id="pip-btn" class="control-btn"><i class="fas fa-external-link-alt"></i></button>
+        </div>
+    </div>
+
+    <h2 id="match-title" class="text-xl font-bold mt-2">Loading Match...</h2>
+    <div id="language-container" class="hidden mt-1">
+        <span class="language-badge"><i class="fas fa-globe"></i> <span id="match-language"></span></span>
+    </div>
+</header>
+
+<main class="player-main">
+    <div class="loading-overlay" id="loading">
+        <div class="spinner"></div>
+    </div>
+    <video id="player" playsinline controls></video>
+</main>
+
+<footer>
+    <a href="https://t.me/+xdQNNePetGxjYjI1" target="_blank"
+       class="control-btn w-full text-center block font-bold">
+        <i class="fab fa-telegram-plane"></i> Join Telegram Channel
+    </a>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+<script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
+
+<script>
+
+const DATA_URL = "https://raw.githubusercontent.com/STCREATIVE1/fancode/refs/heads/main/data/fancode.json";
+const playerVideo = document.getElementById("player");
+const loading = document.getElementById("loading");
+
+function formatLanguage(lang){
+    const map={
+        "ENGLISH":"🇬🇧 English","HINDI":"🇮🇳 Hindi","TAMIL":"Tamil",
+        "TELUGU":"Telugu","KANNADA":"Kannada","MARATHI":"Marathi",
+        "BENGALI":"Bengali","MALAYALAM":"Malayalam","BLOODY_SWEET":"🎯 Multi-Audio"
+    };
+    return map[lang.toUpperCase()] || lang;
+}
+
+async function loadMatch(){
+    const url = new URLSearchParams(location.search);
+    const id = url.get("id");
+    const cdn = url.get("cdn");
+
+    if(!id || !cdn){
+        document.body.innerHTML="<h2 style='padding:20px'>Missing ID or CDN</h2>";
+        return;
+    }
+
+    try{
+        const res = await fetch(DATA_URL);
+        const data = await res.json();
+
+        const match = data.matches.find(m=>String(m.match_id)===String(id));
+        if(!match){ throw new Error("Match not found"); }
+
+        document.getElementById("match-title").textContent = match.title;
+        document.title = match.title + " | Player";
+
+        if(match.language){
+            document.getElementById("match-language").textContent = formatLanguage(match.language);
+            document.getElementById("language-container").classList.remove("hidden");
+        }
+
+        const cdnList = { adfree_stream:match.adfree_stream, dai_stream:match.dai_stream, ...match.STREAMING_CDN };
+        const stream = cdnList[cdn];
+
+        if(!stream){
+            throw new Error("Stream not available");
+        }
+
+        initPlayer(stream);
+
+    }catch(e){
+        document.body.innerHTML = `<h2 style="padding:20px;color:red;">${e}</h2>`;
+    }
+}
+
+function initPlayer(url){
+    if(url.includes(".m3u8") && Hls.isSupported()){
+        const hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(playerVideo);
+
+        hls.on(Hls.Events.MANIFEST_PARSED,()=>{
+            loading.style.display="none";
+
+            const qualities = hls.levels.map(l=>l.height).sort((a,b)=>b-a);
+
+            const player = new Plyr(playerVideo,{
+                autoplay:true,
+                quality:{
+                    default:qualities[0],
+                    options:qualities,
+                    forced:true,
+                    onChange:q=>{
+                        hls.currentLevel = hls.levels.findIndex(x=>x.height===q);
+                    }
+                }
+            });
+
+            player.play();
+        });
+    } else {
+        playerVideo.src=url;
+        const player = new Plyr(playerVideo,{autoplay:true});
+        loading.style.display="none";
+    }
+}
+
+document.getElementById("theater-btn").onclick = ()=>{
+    document.body.classList.toggle("theater");
+};
+document.getElementById("pip-btn").onclick = ()=>{
+    if(playerVideo.requestPictureInPicture) playerVideo.requestPictureInPicture();
+};
+
+loadMatch();
+
+</script>
+
+</body>
+</html>
